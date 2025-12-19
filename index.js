@@ -1,13 +1,18 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
+import { requestId } from 'hono/request-id';
+import { ulid } from "ulid";
 
 const app = new Hono();
+app.use('*', requestId({ generator: () => ulid() }));
 app.use(logger());
 
 app.get("/", (c) => c.text("Hello, World!"));
 
 app.post("/proxy", async (c) => {
+  let response;
+  const requestId = c.get('requestId');
   try {
     const body = await c.req.json();
     const { url, method = "GET", headers = {}, data } = body;
@@ -22,7 +27,8 @@ app.post("/proxy", async (c) => {
       body: data ? JSON.stringify(data) : undefined,
     };
 
-    const response = await fetch(url, fetchOptions);
+    console.debug(requestId, url, JSON.stringify(fetchOptions, null, 2));
+    response = await fetch(url, fetchOptions);
     const contentType = response.headers.get("content-type");
     let parsedData;
 
@@ -32,6 +38,7 @@ app.post("/proxy", async (c) => {
       parsedData = await response.text();
     }
 
+    console.debug(requestId, JSON.stringify(parsedData, null, 2));
     return c.json(
       {
         status: response.status,
@@ -42,6 +49,7 @@ app.post("/proxy", async (c) => {
       response.status,
     );
   } catch (error) {
+    console.error(`Failed to proxy request ${requestId}`, error);
     return c.json({ error: error.message }, 500);
   }
 });
